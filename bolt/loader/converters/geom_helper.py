@@ -41,8 +41,9 @@ def collect_geom_type_sizes(geom: osim.ContactGeometry) -> tuple[GeomType, wp.ve
             radius, half_height = radii[0], radii[1]
             height = 2.0 * half_height
             size = wp.vec3(radius, half_height, radius)
-            aabb = (wp.vec3(0.0), wp.vec3(radii[0] * 2, height + 2 * radius, radii[2] * 2))
-            rbound = wp.sqrt(half_height ** 2 + radius ** 2)
+            # the narrowphase takes a capsule's axis to be its local z
+            aabb = (wp.vec3(0.0), wp.vec3(radii[0] * 2, radii[2] * 2, height + 2 * radius))
+            rbound = half_height + radius  # distance from the center to the tips
             return geom_type, size, aabb, rbound
     else:
         raise NotImplementedError(f"Unsupported contact geometry: {geom_cls}")
@@ -58,8 +59,8 @@ def collect_user_geom_aabb(geom: UserGeomData) -> tuple[AABB, float]:
     elif geom_type == GeomType.CAPSULE:
         radius, half_height = geom.size[0], geom.size[1]
         height = 2.0 * half_height
-        aabb = (wp.vec3(0.0), wp.vec3(2.0 * radius, height + 2.0 * radius, 2.0 * radius))
-        rbound = wp.sqrt(half_height ** 2 + radius ** 2)
+        aabb = (wp.vec3(0.0), wp.vec3(2.0 * radius, 2.0 * radius, height + 2.0 * radius))  # axis is local z
+        rbound = half_height + radius  # distance from the center to the tips
         return aabb, rbound
     else:
         raise NotImplementedError(f"Unsupported contact geometry: {geom_type}")
