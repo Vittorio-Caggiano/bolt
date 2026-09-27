@@ -145,9 +145,13 @@ def _apply_unit_muscle_force_one_muscle_kernel(
 @event_scope
 def muscle_point_path(m: Model, d: Data):
     """ Computes the muscle path length and velocity for point-based paths """
+    # m.muscle_pt_group is padded to one entry (muscle 0) when no muscle uses a point path, so launch over the
+    # unpadded count instead
+    if not m.muscle_pt_group_tuple:
+        return
     wp.launch(
         _compute_path_kernel,
-        dim=(d.nworld, m.muscle_pt_group.size),
+        dim=(d.nworld, len(m.muscle_pt_group_tuple)),
         inputs=[
             m.muscle_pts_adr, m.muscle_pts_num,
             d.integration_done, d.site_pos_G, d.site_vel_G,
@@ -159,9 +163,11 @@ def muscle_point_path(m: Model, d: Data):
 
 @event_scope
 def apply_muscle_force_pt(m: Model, d: Data):
+    if not m.muscle_pt_group_tuple:  # see muscle_point_path
+        return
     wp.launch(
         _apply_muscle_force_kernel,
-        dim=(d.nworld, m.muscle_pt_group.size),
+        dim=(d.nworld, len(m.muscle_pt_group_tuple)),
         inputs=[
             m.muscle_pts_adr, m.muscle_pts_num, m.site_bodyid,
             d.integration_done, d.muscle_actuation, d.site_pos_G, d.site_rel_pos_B,
