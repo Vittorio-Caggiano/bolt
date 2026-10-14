@@ -345,7 +345,7 @@ def make_options(
     return Option(
         gravity=parsed.gravity,
         explicit_gravity=True,
-        implicit_damping=True,
+        implicit_damping=False,
         visuals=requires_visuals,
         nbeam_visuals=nbeam_visuals,
 
