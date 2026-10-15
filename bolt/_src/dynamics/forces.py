@@ -7,6 +7,7 @@ from bolt.types import Model
 from .. import math
 from ..kinematics import mobilizers
 from ..warp_util import event_scope
+from ..warp_util import launch
 
 wp.set_module_options({"enable_backward": False})
 
@@ -191,24 +192,63 @@ def _calc_qfrc_from_ufrc(
     return
 
 
+@wp.kernel
+def _reset_forces(
+        # Data in:
+        integration_done_in: wp.array(dtype=bool),
+        # Data out:
+        body_F_gravity_out: wp.array2d(dtype=wp.spatial_vector),
+        body_F_contact_out: wp.array2d(dtype=wp.spatial_vector),
+        body_F_muscle_out: wp.array2d(dtype=wp.spatial_vector),
+        ufrc_spring_out: wp.array2d(dtype=float),
+        ufrc_damper_out: wp.array2d(dtype=float),
+        qfrc_muscle_out: wp.array2d(dtype=float),
+        ufrc_muscle_out: wp.array2d(dtype=float),
+        ufrc_actuator_out: wp.array2d(dtype=float),
+        ufrc_limit_out: wp.array2d(dtype=float),
+        grf_out: wp.array(dtype=wp.vec3),
+        geom_cforce_out: wp.array2d(dtype=float),
+        geom_self_cforce_out: wp.array2d(dtype=float),
+        body_self_cforce_out: wp.array2d(dtype=float),
+):
+    worldid, i = wp.tid()
+    # Worlds that finished integrating keep their forces, which describe their final state
+    if integration_done_in[worldid]:
+        return
+
+    if i < body_F_gravity_out.shape[1]:
+        body_F_gravity_out[worldid, i] = wp.spatial_vector()
+        body_F_contact_out[worldid, i] = wp.spatial_vector()
+        body_F_muscle_out[worldid, i] = wp.spatial_vector()
+        body_self_cforce_out[worldid, i] = 0.0
+    if i < ufrc_spring_out.shape[1]:
+        ufrc_spring_out[worldid, i] = 0.0
+        ufrc_damper_out[worldid, i] = 0.0
+        ufrc_muscle_out[worldid, i] = 0.0
+        ufrc_actuator_out[worldid, i] = 0.0
+        ufrc_limit_out[worldid, i] = 0.0
+    if i < qfrc_muscle_out.shape[1]:
+        qfrc_muscle_out[worldid, i] = 0.0
+    if i < geom_cforce_out.shape[1]:
+        geom_cforce_out[worldid, i] = 0.0
+        geom_self_cforce_out[worldid, i] = 0.0
+    if i == 0:
+        grf_out[worldid] = wp.vec3()
+
+
 @event_scope
 def reset_forces(m: Model, d: Data):
-    """ Compute all applied forces """
-    d.body_F_gravity.zero_()
-    d.body_F_contact.zero_()
-    d.body_F_muscle.zero_()
-
-    d.ufrc_spring.zero_()
-    d.ufrc_damper.zero_()
-    d.qfrc_muscle.zero_()
-    d.ufrc_muscle.zero_()
-    d.ufrc_actuator.zero_()
-    d.ufrc_limit.zero_()
-
-    d.grf.zero_()
-    d.geom_cforce.zero_()
-    d.geom_self_cforce.zero_()
-    d.body_self_cforce.zero_()
+    """ Zeros the force accumulators of the worlds that are still integrating """
+    launch(
+        _reset_forces,
+        dim=(d.nworld, max(m.nbody, m.nv, m.nq, m.ngeom, 1)),
+        inputs=[d.integration_done],
+        outputs=[
+            d.body_F_gravity, d.body_F_contact, d.body_F_muscle,
+            d.ufrc_spring, d.ufrc_damper, d.qfrc_muscle, d.ufrc_muscle, d.ufrc_actuator, d.ufrc_limit,
+            d.grf, d.geom_cforce, d.geom_self_cforce, d.body_self_cforce,
+        ],
+    )
 
 
 @event_scope
@@ -217,7 +257,7 @@ def apply_gravity(m: Model, d: Data):
     Compute gravity forces. Note: this applies an external force.
     It is more efficient to set the acceleration to -g in the articulated body algorithm
     """
-    wp.launch(
+    launch(
         _gravity,
         dim=(d.nworld, m.nbody),
         inputs=[m.body_mass, m.body_mass_center, d.integration_done, d.mob_X_GB, m.opt.gravity],
@@ -228,7 +268,7 @@ def apply_gravity(m: Model, d: Data):
 @event_scope
 def spring(m: Model, d: Data):
     """Adds all passive forces."""
-    wp.launch(
+    launch(
         _spring_jnt_passive,
         dim=(d.nworld, m.nbody),
         inputs=[
@@ -247,7 +287,7 @@ def spring(m: Model, d: Data):
 
 @event_scope
 def damping(m: Model, d: Data):
-    wp.launch(
+    launch(
         _damper_dof_passive,
         dim=(d.nworld, m.nv),
         inputs=[
@@ -262,7 +302,7 @@ def damping(m: Model, d: Data):
 @event_scope
 def qfrc_to_ufrc(m: Model, d: Data, qfrc_in: wp.array, ufrc_out: wp.array):
     """ Converts all forces in qpos space to u space """
-    wp.launch(
+    launch(
         _calc_ufrc_from_qfrc,
         dim=(d.nworld, m.nbody),
         inputs=[
@@ -276,7 +316,7 @@ def qfrc_to_ufrc(m: Model, d: Data, qfrc_in: wp.array, ufrc_out: wp.array):
 @event_scope
 def ufrc_to_qfrc(m: Model, d: Data, ufrc_in: wp.array, qfrc_out: wp.array):
     """ Converts all forces in u space to q space """
-    wp.launch(
+    launch(
         _calc_qfrc_from_ufrc,
         dim=(d.nworld, m.nbody),
         inputs=[
@@ -290,14 +330,14 @@ def ufrc_to_qfrc(m: Model, d: Data, ufrc_in: wp.array, qfrc_out: wp.array):
 @event_scope
 def accumulate_forces(m: Model, d: Data):
     """ Accumulate all forces into d.body_F and d.mob_f smooth"""
-    wp.launch(
+    launch(
         _body_frc_accumulate,
         dim=(d.nworld, m.nbody),
         inputs=[d.integration_done, d.body_F_gravity, d.body_F_contact, d.body_F_muscle, d.body_F_applied],
         outputs=[d.body_F]
     )
 
-    wp.launch(
+    launch(
         _mob_f_accumulate,
         dim=(d.nworld, m.nv),
         inputs=[d.integration_done,
