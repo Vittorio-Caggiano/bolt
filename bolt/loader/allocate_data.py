@@ -1,6 +1,7 @@
 """ Allocates Data using its fields' annotations """
 import warp as wp
 
+from bolt.consts import INITIAL_STEP_SIZE
 from bolt.loader.array_util import allocate_from_annotations
 from bolt.loader.array_util import dataclass_sizes
 from bolt.loader.array_util import make_zero
@@ -51,11 +52,10 @@ def allocate_data(m: Model, n_worlds: int, integrator: IntegratorType) -> Data:
     )
 
     # Non-zero initial values
-    dt = 1.0 / 100.0  # This will be modified later by the user
     d.world_reset.fill_(True)
     d.rng_state.fill_(wp.rand_init(0))
-    d.step_size.fill_(dt)
-    d.actual_step_size.fill_(dt)
+    d.step_size.fill_(INITIAL_STEP_SIZE)
+    d.actual_step_size.fill_(INITIAL_STEP_SIZE)
     d.qvel_scales.fill_(1.0)
     d.z_scales.fill_(1.0)
     d.a_act.fill_(0.5)

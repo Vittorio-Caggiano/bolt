@@ -11,6 +11,7 @@ from ..dynamics import actuators
 from ..dynamics import forces
 from ..dynamics import inertia
 from ..dynamics import limit_force
+from ..integrate import adaptive_common
 from ..kinematics import custom_joints
 from ..kinematics import position
 from ..kinematics import reset_qpos
@@ -27,6 +28,11 @@ wp.set_module_options({"enable_backward": False})
 @event_scope
 def reset_forces(m: Model, d: Data):
     forces.reset_forces(m, d)
+
+
+@event_scope
+def reset_integrator(m: Model, d: Data):
+    adaptive_common.reset_step_size_control(m, d)
 
 
 @event_scope
@@ -194,4 +200,5 @@ def reset(m: Model, d: Data):
     realize_actuators(m, d, run_reset=True)
     realize_forces(m, d)
     compute_accelerations(m, d)
+    reset_integrator(m, d)
     d.world_reset.zero_()

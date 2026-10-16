@@ -4,6 +4,7 @@ __all__ = [
     "BOLT_MINVAL",
     "BOLT_MAXVAL",
     "BOLT_SIG_REAL",
+    "INITIAL_STEP_SIZE",
     "COND_PATH_POINT_RANGE_TOL",
     "IDX_SCRATCH_ROT_F",
     "IDX_SCRATCH_ROT_DF",
@@ -29,6 +30,9 @@ MAX_POLY_ORDER = 10  # Maximum polynomial order
 BOLT_MINVAL = 1e-15
 BOLT_MAXVAL = 10000000000.0
 BOLT_SIG_REAL = 1e-6
+
+# Adaptive step size a world starts with, after allocation or a reset
+INITIAL_STEP_SIZE = 1.0 / 100.0
 
 # OpenSim padding for a ConditionalPathPoint's coordinate range
 COND_PATH_POINT_RANGE_TOL = 1e-5

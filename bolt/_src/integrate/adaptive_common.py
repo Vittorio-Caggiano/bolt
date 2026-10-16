@@ -3,15 +3,45 @@ import functools
 import warp as wp
 
 from bolt.consts import BOLT_MINVAL
+from bolt.consts import INITIAL_STEP_SIZE
 from bolt.types import Data
 from bolt.types import Model
 
 from .. import math
+from ..contact import collision_driver
 from ..kinematics import mobilizers
 from ..warp_util import event_scope
 from ..warp_util import launch
 
 wp.set_module_options({"enable_backward": False})
+
+
+@wp.kernel
+def _reset_step_size_control(
+        # Data in:
+        world_reset_in: wp.array(dtype=bool),
+        # In:
+        initial_step_size: float,
+        # Data out:
+        step_size_out: wp.array(dtype=float),
+        prev_error_out: wp.array(dtype=float),
+):
+    worldid = wp.tid()
+    if not world_reset_in[worldid]:
+        return
+    step_size_out[worldid] = initial_step_size
+    prev_error_out[worldid] = 0.0  # no error history: the PI controller starts like the integral-only one
+
+
+@event_scope
+def reset_step_size_control(m: Model, d: Data):
+    """ Reset adaptive integrator state """
+    launch(
+        _reset_step_size_control,
+        dim=d.nworld,
+        inputs=[d.world_reset, INITIAL_STEP_SIZE],
+        outputs=[d.step_size, d.prev_error],
+    )
 
 
 @wp.kernel
@@ -724,5 +754,5 @@ def integrate_adaptive(m: Model, d: Data, attempt_step):
         d=d,
     )
 
-    # The last attempt of each world already realized its final state
     d.integration_done.zero_()
+    collision_driver.collision(m, d)  # a bit annoying, need to run collision detection again since it's a shared array

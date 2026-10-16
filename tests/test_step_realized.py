@@ -111,3 +111,61 @@ def test_realize_inputs_after_step(name, integrator):
         light = _snapshot(d)
         forward.fwd(m, d)
         _assert_matches(light, _snapshot(d), f"realize_inputs after step {step}")
+
+
+def _contacts_per_world(d) -> list[list[tuple]]:
+    """ Each world's contacts as sorted (geom pair, distance), from the shared contact list """
+    n = min(int(d.nacon.numpy()[0]), d.naconmax)
+    worldid, geom, dist = d.contact.worldid.numpy()[:n], d.contact.geom.numpy()[:n], d.contact.dist.numpy()[:n]
+    out = [[] for _ in range(d.nworld)]
+    for w, g, dd in zip(worldid, geom, dist):
+        out[w].append((int(g[0]), int(g[1]), float(dd)))
+    return [sorted(c) for c in out]
+
+
+@pytest.mark.parametrize("name", MODEL_NAMES)
+@pytest.mark.parametrize("integrator", [I.EULER_ADAPTIVE, I.RK_MERSON_ADAPTIVE], ids=lambda i: i.name)
+def test_contact_list_after_step(name, integrator):
+    """ The shared contact list must hold every world's contacts, also for worlds that finished integrating early """
+    m, d, rng = _setup(name, integrator)
+    if m.nxn_geom_pair_filtered.shape[0] == 0:
+        pytest.skip("no collision geom pairs")
+    saw_contacts = attempts_differed = False
+    for step in range(N_STEPS):
+        _new_inputs(m, d, rng)
+        bolt.increment_next_time(m, d, ADAPTIVE_DT)
+        bolt.step(m, d)
+        attempts = d.steps_attempted.numpy()
+        attempts_differed |= bool(attempts.min() != attempts.max())
+
+        after_step = _contacts_per_world(d)
+        forward.fwd(m, d)
+        ref = _contacts_per_world(d)
+        saw_contacts |= any(ref)
+        for w in range(d.nworld):
+            assert [c[:2] for c in after_step[w]] == [c[:2] for c in ref[w]], \
+                f"after step {step}: world {w} has contacts {after_step[w]}, expected {ref[w]}"
+            np.testing.assert_allclose([c[2] for c in after_step[w]], [c[2] for c in ref[w]], atol=1e-6)
+
+    assert saw_contacts, "no contacts were engaged"
+    assert attempts_differed, "every world took the same number of attempts, so early finishers were not tested"
+
+
+def test_reset_restarts_step_size_control():
+    """ A reset world starts adaptive stepping like a freshly loaded one, not from its previous episode """
+    m, d, rng = _setup(MODEL_NAMES[0], I.EULER_ADAPTIVE)
+    for _ in range(N_STEPS):
+        _new_inputs(m, d, rng)
+        bolt.increment_next_time(m, d, ADAPTIVE_DT)
+        bolt.step(m, d)
+    initial = np.float32(bolt.INITIAL_STEP_SIZE)  # step sizes are float32
+    step_size, prev_error = d.step_size.numpy().copy(), d.prev_error.numpy().copy()
+    assert (step_size != initial).any() and (prev_error != 0.0).any(), "stepping changed nothing"
+
+    reset = np.arange(N_WORLDS) % 2 == 0
+    d.world_reset.assign(reset)
+    bolt.reset(m, d)
+    np.testing.assert_array_equal(d.step_size.numpy()[reset], initial)
+    np.testing.assert_array_equal(d.prev_error.numpy()[reset], 0.0)
+    np.testing.assert_array_equal(d.step_size.numpy()[~reset], step_size[~reset])
+    np.testing.assert_array_equal(d.prev_error.numpy()[~reset], prev_error[~reset])
