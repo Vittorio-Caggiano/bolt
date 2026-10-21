@@ -175,6 +175,21 @@ def create_renderer(
         draw_beams: bool,
         draw_sites: bool,
 ):
+    if renderer_type == RendererType.NEWTON:
+        # Imported lazily so Newton stays an optional dependency
+        from bolt.render.newton_renderer import NewtonRenderer
+        viewer = NewtonRenderer(
+            m=load_result.model,
+            draw_colliders=draw_colliders,
+            draw_visuals=draw_visuals,
+            draw_muscles=draw_muscles,
+            draw_body_mass=draw_body_mass,
+            draw_beams=draw_beams,
+            draw_sites=draw_sites,
+        )
+        viewer.load_meshes(load_result.mesh_load_results)
+        return viewer
+
     viewer = Renderer(
         m=load_result.model,
         renderer_type=renderer_type,

@@ -29,7 +29,8 @@ Inspired by [MuJoCo Warp](https://github.com/google-deepmind/mujoco_warp) and [O
   - Symplectic Euler and RK4 
   - Adaptive symplectic Euler and Runge-Kutta-Merson
 
-We also include a basic [OpenGL renderer](bolt/render) (not tuned for performance) for debugging.
+We also include basic [OpenGL](bolt/render/renderer.py) and [Newton](bolt/render/newton_renderer.py) renderers 
+for debugging. The Newton renderer is preferred for performance.
 
 ## Limitations/Unsupported Features
 - Bolt only supports open-loop kinematic trees. Closed-loop kinematic trees 

@@ -15,6 +15,7 @@ arg_parser.add_argument("--recompile", action="store_true")
 arg_parser.add_argument("--debug", action="store_true")
 arg_parser.add_argument("--benchmark", action="store_true")
 arg_parser.add_argument("--tree", action="store_true")
+arg_parser.add_argument("--renderer", type=str, default="opengl", choices=["opengl", "tiled", "newton"])
 args = arg_parser.parse_args()
 
 
@@ -54,7 +55,7 @@ def main():
     if not args.benchmark:  # Live OpenGL render
         viewer = bolt.create_renderer(
             load_result=load_result,
-            renderer_type=bolt.RendererType.OPENGL,
+            renderer_type=bolt.RendererType[args.renderer.upper()],
             draw_visuals=True,
             draw_colliders=False,
             draw_muscles=True,
@@ -62,7 +63,7 @@ def main():
             draw_beams=True,
             draw_sites=False,
         )
-        if viewer.viewer_type == bolt.RendererType.TILED:
+        if viewer.viewer_type in (bolt.RendererType.TILED, bolt.RendererType.NEWTON):
             viewer.setup_tiled_renderer(list(range(args.nworld)))
 
         # Step graph capture
@@ -72,12 +73,15 @@ def main():
             graph = capture.graph
 
         # Simulation loop
-        for i in range(args.nstep):
-            bolt.increment_next_time(m, d, dt)
-            if use_cuda_graphs:
-                wp.capture_launch(graph)
-            else:
-                bolt.step(m, d)
+        i = 0
+        while i < args.nstep and viewer.is_running():
+            if viewer.should_step():
+                bolt.increment_next_time(m, d, dt)
+                if use_cuda_graphs:
+                    wp.capture_launch(graph)
+                else:
+                    bolt.step(m, d)
+                i += 1
 
             viewer.render(m, d)
         viewer.close()

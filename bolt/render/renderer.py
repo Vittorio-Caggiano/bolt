@@ -16,6 +16,7 @@ class RendererType(Enum):
     OPENGL = 1
     TILED = 2
     USD = 3
+    NEWTON = 4  # see newton_renderer.py
 
 
 class Renderer:
@@ -358,6 +359,18 @@ class Renderer:
                 self.renderer.end_frame()
         elif self.viewer_type == RendererType.NONE:
             return
+
+    def is_running(self) -> bool:
+        """ False once the window has been closed """
+        if self.viewer_type == RendererType.OPENGL or \
+                self.viewer_type == RendererType.TILED:
+            return self.renderer.is_running()
+        return True
+
+    @staticmethod
+    def should_step() -> bool:
+        """ Warp's OpenGLRenderer handles pausing itself by blocking inside end_frame """
+        return True
 
     def close(self):
         if self.viewer_type == RendererType.OPENGL or \
